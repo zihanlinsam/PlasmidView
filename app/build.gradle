@@ -13,7 +13,7 @@ android {
         minSdk 26
         targetSdk 35
         versionCode 1
-        versionName '1.0-beta3'
+        versionName '1.0'
 
         ndk {
             abiFilters 'arm64-v8a', 'x86_64'
@@ -23,7 +23,6 @@ android {
             buildPython '/home/sam/.pyenv/versions/3.12.13/bin/python3'
             pip {
                 install 'git+https://github.com/merv1n34k/sgffp.git'
-            install 'xmltodict'
             }
         }
     }

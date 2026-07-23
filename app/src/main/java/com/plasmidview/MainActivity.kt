@@ -1,4 +1,5 @@
 package com.plasmidview
+import androidx.compose.runtime.getValue
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.plasmidview.data.model.AppPreferences
 import com.plasmidview.ui.navigation.PlasmidNavGraph
