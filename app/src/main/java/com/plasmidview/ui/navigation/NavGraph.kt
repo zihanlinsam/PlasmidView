@@ -6,17 +6,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.plasmidview.ui.about.AboutScreen
+import com.plasmidview.ui.alignment.AlignmentScreen
 import com.plasmidview.ui.home.HomeScreen
-import com.plasmidview.ui.about.AboutScreen
-import com.plasmidview.ui.settings.DisplayScreen
 import com.plasmidview.ui.settings.AIConfigScreen
+import com.plasmidview.ui.settings.DisplayScreen
 import com.plasmidview.ui.settings.LanguageScreen
-import com.plasmidview.ui.about.AboutScreen
 
 object Routes {
     const val HOME = "home"
     const val PLASMID = "plasmid/{docIndex}"
-    const val HELP = "help"
+    const val ALIGNMENT = "alignment"
 
     fun plasmid(docIndex: Int) = "plasmid/$docIndex"
 }
@@ -33,6 +33,10 @@ fun PlasmidNavGraph() {
             )
         }
 
+        composable(Routes.ALIGNMENT) {
+            AlignmentScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(
             Routes.PLASMID,
             arguments = listOf(navArgument("docIndex") { type = NavType.IntType })
@@ -40,7 +44,8 @@ fun PlasmidNavGraph() {
             val docIndex = backStackEntry.arguments?.getInt("docIndex") ?: 0
             PlasmidContentScreen(
                 docIndex = docIndex,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToAlign = { navController.navigate(Routes.ALIGNMENT) }
             )
         }
 
