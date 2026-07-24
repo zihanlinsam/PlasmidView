@@ -1,6 +1,9 @@
 package com.plasmidview.data.ai
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +22,7 @@ class AiClient(
 
     private val langInstruction = if (language == "chinese") "请用中文回答。不要使用表格，用列表代替。" else "Please provide answer in English. Do NOT use tables, use lists instead."
 
+    /** Non-streaming: returns the full response string. */
     suspend fun ask(systemPrompt: String, userPrompt: String, fast: Boolean = false): String {
         if (!valid) return if (language == "chinese") "AI 未配置。请在设置中配置 API Key。" else "AI not configured. Set API key in Settings."
         val sysMsg = "$langInstruction\n\n$systemPrompt"
@@ -65,5 +69,69 @@ class AiClient(
                 if (language == "chinese") "连接错误: ${e.message}" else "Connection error: ${e.message}"
             }
         }
+    }
+
+    /** Streaming: emits individual tokens as they arrive (SSE). */
+    suspend fun askStream(
+        systemPrompt: String,
+        userPrompt: String,
+        fast: Boolean = false
+    ): Flow<String> = callbackFlow {
+        if (!valid) {
+            trySend(if (language == "chinese") "AI 未配置。" else "AI not configured.")
+            close()
+            return@callbackFlow
+        }
+        val sysMsg = "$langInstruction\n\n$systemPrompt"
+
+        withContext(Dispatchers.IO) {
+            try {
+                val url = URL("${baseUrl.trimEnd('/')}/chat/completions")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("api-key", apiKey)
+                conn.doOutput = true
+                conn.connectTimeout = if (fast) 15000 else 30000
+                conn.readTimeout = 0 // no read timeout for streaming
+
+                val body = JSONObject().apply {
+                    put("model", model)
+                    put("stream", true)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply { put("role", "system"); put("content", sysMsg) })
+                        put(JSONObject().apply { put("role", "user"); put("content", userPrompt) })
+                    })
+                    put("temperature", if (fast) 0.3 else 0.3)
+                }
+
+                conn.outputStream.write(body.toString().toByteArray())
+
+                val reader = BufferedReader(InputStreamReader(
+                    if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream))
+
+                var line: String? = null
+                while (reader.readLine().also { line = it } != null) {
+                    val l = line ?: continue
+                    if (!l.startsWith("data: ")) continue
+                    val data = l.removePrefix("data: ").trim()
+                    if (data == "[DONE]") break
+                    try {
+                        val json = JSONObject(data)
+                        val delta = json.getJSONArray("choices")
+                            .optJSONObject(0)
+                            ?.optJSONObject("delta")
+                            ?.optString("content", "")
+                        if (delta != null && delta.isNotEmpty() && delta != "null") {
+                            trySend(delta)
+                        }
+                    } catch (_: Exception) { /* skip malformed chunks */ }
+                }
+                reader.close()
+            } catch (e: Exception) {
+                trySend(if (language == "chinese") "\n\n连接错误: ${e.message}" else "\n\nConnection error: ${e.message}")
+            }
+        }
+        close()
     }
 }

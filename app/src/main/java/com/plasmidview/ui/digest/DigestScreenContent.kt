@@ -595,7 +595,7 @@ private fun AutoPickDialog(
                             items(candidates!!) { c ->
                                 Surface(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable { onPick(c) },
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = MaterialTheme.shapes.medium,
                                     color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Column(Modifier.padding(8.dp)) {

@@ -9,6 +9,10 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -70,10 +74,16 @@ fun PlasmidContentScreen(docIndex: Int, onBack: () -> Unit) {
         bottomBar = {
             NavigationBar {
                 PlasmidTab.entries.forEach { tab ->
+                    val outIcon = when (tab) {
+                        PlasmidTab.MAP -> Icons.Outlined.Dashboard
+                        PlasmidTab.SEQUENCE -> Icons.Outlined.Code
+                        PlasmidTab.FEATURES -> Icons.Outlined.ListAlt
+                        PlasmidTab.DIGEST -> Icons.Outlined.ContentCut
+                    }
                     NavigationBarItem(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
+                        icon = { Icon(if (selectedTab == tab) tab.icon else outIcon, contentDescription = tab.label) },
                         label = { Text(tab.label) }
                     )
                 }
