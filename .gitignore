@@ -11,3 +11,11 @@ local.properties
 .cxx/
 *.pyc
 app/build/python/
+
+# Junk / archives
+*.zip
+tmp_fix.py
+*.dna:Zone.Identifier
+
+# Root plasmid test files (use assets/ instead)
+/pMDLgpRRE.dna
