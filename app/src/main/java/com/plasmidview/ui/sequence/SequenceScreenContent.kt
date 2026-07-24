@@ -215,15 +215,15 @@ private fun FeatDlg(f: Feature, doc: com.plasmidview.data.model.PlasmidDocument,
         text = { Column {
             Text("Type: ${f.type.label}"); Text("Position: ${f.start + 1} - ${f.end}")
             Text("Length: ${f.length} bp"); Text("Strand: ${f.strand.label}")
-            val e2 = f.end.coerceAtMost(doc.totalLength); val s2 = f.start.coerceAtMost(e2)
-            if (s2 < e2) { Spacer(Modifier.height(8.dp)); val seq = doc.sequence.substring(s2, e2)
+            val seq = f.displaySequence(doc)
+            if (seq.isNotEmpty()) { Spacer(Modifier.height(8.dp))
                 Text("Sequence (${seq.length} bp):", fontWeight = FontWeight.Bold); Text(seq.take(300) + if (seq.length > 300) "..." else "") }
         }},
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onDismiss) { Text("Close") }
-                Button(onClick = { val e2 = f.end.coerceAtMost(doc.totalLength); val s2 = f.start.coerceAtMost(e2)
-                    if (s2 < e2) clip.setText(AnnotatedString(doc.sequence.substring(s2, e2))) }) { Text("Copy") }
+                Button(onClick = { val seq = f.displaySequence(doc)
+                    if (seq.isNotEmpty()) clip.setText(AnnotatedString(seq)) }) { Text("Copy") }
             }
         }
     )

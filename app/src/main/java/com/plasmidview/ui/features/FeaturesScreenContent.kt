@@ -153,8 +153,8 @@ fun FeaturesScreenContent(docIndex: Int) {
                     Spacer(Modifier.height(8.dp))
                     Text("Type: ${f.type.label}"); Text("Position: ${f.start + 1} - ${f.end}")
                     Text("Length: ${f.length} bp"); Text("Strand: ${f.strand.label}")
-                    val e2 = f.end.coerceAtMost(doc.totalLength); val s2 = f.start.coerceAtMost(e2)
-                    if (s2 < e2) { Spacer(Modifier.height(8.dp)); val seq = doc.sequence.substring(s2, e2)
+                    val seq = f.displaySequence(doc)
+                    if (seq.isNotEmpty()) { Spacer(Modifier.height(8.dp))
                         Text("Sequence (${seq.length} bp):", fontWeight = FontWeight.Bold)
                         Text(seq.take(300) + if (seq.length > 300) "..." else "") }
                     // AI loading bar (animated or themed constant)

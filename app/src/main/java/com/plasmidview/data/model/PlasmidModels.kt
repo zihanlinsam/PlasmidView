@@ -47,6 +47,22 @@ object DocumentRepository {
     }
 }
 
+/** Reverse-complement a DNA string. */
+fun String.reverseComplement(): String {
+    val map = mapOf('A' to 'T', 'T' to 'A', 'G' to 'C', 'C' to 'G',
+                     'a' to 't', 't' to 'a', 'g' to 'c', 'c' to 'g')
+    return this.reversed().map { map[it] ?: it }.joinToString("")
+}
+
+/** Return the biologically meaningful sequence for this feature (rev-comp if REVERSE strand). */
+fun Feature.displaySequence(doc: PlasmidDocument): String {
+    val s = start.coerceAtMost(doc.totalLength)
+    val e = end.coerceAtMost(doc.totalLength)
+    if (s >= e) return ""
+    val raw = doc.sequence.substring(s, e)
+    return if (strand == Strand.REVERSE) raw.reverseComplement() else raw
+}
+
 // === File persistence ===
 data class FileEntry(val name: String, val uri: String, val timestamp: Long = System.currentTimeMillis())
 
