@@ -4,59 +4,61 @@
 
 ---
 
-An Android plasmid map viewer with AI-powered analysis and sequence alignment.
-
-## Screenshots
-
-*(coming soon)*
+An Android plasmid map viewer with AI-powered analysis, restriction digest simulation, and sequence alignment.
 
 ## Features
 
 ### 🧬 Plasmid Map
-- Circular plasmid visualization with pinch-to-zoom and pan
-- Feature arcs with color-coded types (genes, CDS, promoters, origins, LTRs, etc.)
-- Forward/reverse strand indicators (solid/dashed borders)
-- Base pair ticks and position labels
-- Tap any feature arc to view detailed information
+- Circular vector visualization with pinch-to-zoom and pan gestures
+- Color-coded feature arcs (CDS, promoters, origins, terminators, LTRs, genes, etc.)
+- Forward/reverse strand indicators — solid border for forward, dashed for reverse
+- Base pair ticks and position labels around the ring
+- Tap any feature arc to view name, type, position, length, strand, and sequence
 
 ### 📄 Sequence Browser
-- Full plasmid sequence display with per-base coloring (A=green, T=red, G=orange, C=blue)
-- Adjustable font size slider
-- Search within the sequence with highlighted matches
-- Feature tracks below each line with directional indicators
-- Tap any feature track to view position, length, strand, and sequence
+- Full plasmid sequence with A/T/G/C per-base coloring
+- Adjustable font size for comfortable reading
+- Search within the sequence with highlighted match positions
+- Feature tracks below each line: colored bars with directional arrow indicators
+- Tap any feature track to view details
 
-### 🔍 Sequence Comparison *(New in v2.0)*
-- Align any DNA sequence (FASTA/`.seq`/`.fa`) against the opened plasmid
-- **Smith-Waterman** local alignment engine finds the best matching segment
-- Automatic forward/reverse complement detection — picks whichever scores higher
-- ClustalW-style 4-line display:
-  - **Track** — feature bars color-coded by type (dashed border for reverse strand)
+### 🔍 Sequence Comparison
+- Align any DNA sequence (FASTA / `.seq` / `.fa`) against the opened plasmid
+- **Smith-Waterman** local alignment — automatically finds the best matching segment
+- Automatic forward/reverse complement detection, picks the higher-scoring alignment
+- Four-line display rendered on a canvas:
+  - **Track** — feature bars, dashed border for reverse-strand features
   - **Ref** — reference sequence with per-base coloring
-  - **Match** — quality symbols (\* = exact, : = strong, . = weak)
-  - **Query** — query sequence with mismatches highlighted in red bold
-- Overhang detection — extra bases extending beyond the match shown separately
-- Mutation summary with mismatches, insertions, deletions, and affected features
+  - **Match** — ClustalW quality symbols: `*` exact, `:` strong, `.` weak
+  - **Query** — query sequence, mismatches highlighted in red bold
+- Overhang detection: extra query bases beyond the matched region shown separately
+- Mutation summary: lists mismatches, insertions, and deletions with affected feature annotations
+- **Ask AI** — send the alignment result (coordinates, mutations, features) to AI for analysis, streaming response
 
 ### 🏷️ Features List
-- Searchable feature list with type badges, positions, and lengths
-- **Ask AI** per feature — get instant AI analysis of any genetic element
-- **About this plasmid** — AI describes the entire plasmid's structure and function
-- Streaming SSE responses rendered as formatted markdown
+- Searchable, scrollable list of all features with type badges and position tags
+- **Ask AI** per feature — tap any feature to view details, then ask AI for a description and functional analysis
+- **About this plasmid** — AI describes the entire plasmid's structure and likely biological function
+- All AI responses are streaming SSE with markdown rendering
+- Deep Thinking toggle in Settings (default off for faster responses)
 
 ### ✂️ Restriction Digest
-- Browse 1,088 restriction enzymes from the REBASE database
-- Multi-enzyme selection for simulated circular digestion
-- **AutoPick** — recommends optimal enzyme combinations (single/double digest, fragment count, size range)
-- Circular map overlay with feature arcs + cut site markers (color-coded per enzyme)
-- Fragment list with sizes and positions
+- Browse **1,088 restriction enzymes** from the REBASE database
+- Select multiple enzymes to simulate a circular digestion
+- **AutoPick** — the app recommends optimal enzyme combinations based on:
+  - Single or double digest
+  - Desired fragment count
+  - Minimum and maximum fragment size
+- Circular map overlay shows both feature arcs and enzyme cut markers, color-coded per enzyme
+- Fragment list with sizes and genomic coordinates
 
 ### ⚙️ Settings
-- Theme: Auto / Light / Dark (Material You dynamic colors)
+- Theme: Auto (follow system), Light, Dark — Material You dynamic colors
 - Colored bases toggle
-- AI configuration: API URL, API Key, Model selection
+- AI configuration: API endpoint, API key, model selection
 - AI response language: English / 中文
-- Test Connection button to validate AI setup
+- Deep Thinking toggle (off by default, enables chain-of-thought reasoning)
+- Test Connection button to validate the AI setup
 
 ## Supported File Formats
 
@@ -68,32 +70,19 @@ An Android plasmid map viewer with AI-powered analysis and sequence alignment.
 | Plain text | `.seq`           | Built-in (FASTA)   |
 | JSON       | `.json`          | Built-in           |
 
-## Tech Stack
+## Opening Files
 
-- **Language:** Kotlin
-- **UI:** Jetpack Compose + Material You (Material 3)
-- **Python Bridge:** Chaquopy (for .dna parsing)
-- **AI:** OpenAI-compatible API (`/v1/chat/completions`)
-- **Alignment Engine:** Pure Kotlin Smith-Waterman (custom implementation)
-- **Restriction Engine:** Pure Kotlin IUPAC-aware pattern matching, data from REBASE via Biopython
-- **Navigation:** Navigation Compose
-- **Persistence:** DataStore Preferences
-- **Build:** Gradle (Groovy DSL), AGP 8.9
+1. Tap **Import file** or **Import folder** on the home screen
+2. Select a `.dna`, `.gb`, `.fasta`, `.fa`, `.seq`, or `.json` file
+3. The plasmid opens in the Map view with all features parsed
 
-## Building
+## Sequence Comparison
 
-```bash
-git clone https://github.com/zihanlinsam/PlasmidView.git
-cd PlasmidView
-./gradlew assembleDebug
-```
-
-The build requires a Python 3.12 interpreter with Chaquopy support. See `app/build.gradle` for the exact path.
-
-## Requirements
-
-- Android 8.0 (API 26) or higher
-- ARM64 or x86_64 device/emulator
+1. Open a plasmid, switch to the **Sequence** tab
+2. Tap the **Compare** button in the title bar
+3. Select a FASTA/seq file from your device
+4. The alignment result appears in a dedicated screen with the four-line display
+5. Tap **Ask AI** in the title bar for AI-powered analysis of the alignment
 
 ## AI Setup
 
@@ -104,11 +93,40 @@ The build requires a Python 3.12 interpreter with Chaquopy support. See `app/bui
 5. Choose response language
 6. Tap **Test Connection** to verify
 
-The app supports any OpenAI-compatible API. No AI features are required — everything works without an API key, AI analysis is optional.
+The app supports any OpenAI-compatible API. AI features are optional — everything works without an API key.
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language  | Kotlin |
+| UI        | Jetpack Compose + Material You (Material 3) |
+| Python Bridge | Chaquopy (for SnapGene .dna parsing) |
+| AI API    | OpenAI-compatible `/v1/chat/completions` |
+| Alignment Engine | Pure Kotlin Smith-Waterman (custom implementation) |
+| Restriction Engine | Pure Kotlin, IUPAC-aware, REBASE data via Biopython |
+| Navigation | Navigation Compose |
+| Persistence | DataStore Preferences |
+| Build     | Gradle (Groovy DSL), AGP 8.9 |
+
+## Building
+
+```bash
+git clone https://github.com/zihanlinsam/PlasmidView.git
+cd PlasmidView
+./gradlew assembleDebug
+```
+
+Requires Python 3.12 and an Android SDK. The Chaquopy plugin handles the Python bridge automatically.
+
+## Requirements
+
+- Android 8.0 (API 26) or higher
+- ARM64 or x86_64 device
 
 ## Download
 
-APKs are available from the [Releases](https://github.com/zihanlinsam/PlasmidView/releases) page.
+Pre-built APKs are available from the [Releases](https://github.com/zihanlinsam/PlasmidView/releases) page.
 
 ## License
 
