@@ -519,10 +519,12 @@ private fun AutoPickDialog(
     var maxBp by remember { mutableStateOf("") }
     var candidates by remember { mutableStateOf<List<AutoPickCandidate>?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var searchTrigger by remember { mutableIntStateOf(0) }
 
     // Run auto-pick on background thread when triggered
-    LaunchedEffect(isLoading) {
-        if (isLoading && sequence.isNotEmpty()) {
+    LaunchedEffect(searchTrigger) {
+        if (searchTrigger > 0 && sequence.isNotEmpty()) {
+            isLoading = true
             val r = withContext(Dispatchers.IO) {
                 RestrictionSearch.autoPick(
                     sequence, mode, targetCount.toIntOrNull() ?: 2,
@@ -615,11 +617,13 @@ private fun AutoPickDialog(
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onDismiss) { Text("Cancel") }
-                Button(onClick = {
-                    isLoading = true
-                    candidates = null
-                    // LaunchedEffect will run the calculation
-                }) { Text("Search") }
+                Button(
+                    onClick = {
+                        searchTrigger++
+                        candidates = null
+                    },
+                    enabled = !isLoading
+                ) { Text(if (isLoading) "Searching..." else "Search") }
             }
         }
     )
