@@ -60,7 +60,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text("PlasmidView", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("v1.0-beta3", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("v2.0-beta8", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(16.dp))
 
                 Text("Author", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
