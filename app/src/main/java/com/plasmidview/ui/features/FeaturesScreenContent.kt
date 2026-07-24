@@ -15,7 +15,9 @@ import androidx.compose.ui.Alignment
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +35,8 @@ fun FeaturesScreenContent(docIndex: Int) {
     val aiKey by prefs.aiApiKey.collectAsState(initial = "")
     val aiModel by prefs.aiModel.collectAsState(initial = "")
     val aiLang by prefs.aiLang.collectAsState(initial = "english")
+    val aiThinking by prefs.aiThinking.collectAsState(initial = false)
+    val clip = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
     var searchQ by remember { mutableStateOf("") }
@@ -58,7 +62,7 @@ fun FeaturesScreenContent(docIndex: Int) {
                     IconButton(onClick = {
                         scope.launch {
                             plasmidAiLoading = true; plasmidAiResult = ""
-                            val client = AiClient(aiUrl, aiKey, aiModel, aiLang)
+                            val client = AiClient(aiUrl, aiKey, aiModel, aiLang, thinkingEnabled = aiThinking)
                             val featDesc = doc.features.joinToString("\n") { f ->
                                 "- ${f.name} (${f.type.label}): ${f.start + 1}-${f.end}, ${f.length}bp, strand=${f.strand.label}"
                             }
@@ -134,7 +138,9 @@ fun FeaturesScreenContent(docIndex: Int) {
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { plasmidAiResult = null }) { Text("OK") }
-                    TextButton(onClick = { plasmidAiResult = null }) { Text("Copy") }
+                    TextButton(onClick = {
+                        plasmidAiResult?.let { clip.setText(AnnotatedString(it)) }
+                    }) { Text("Copy") }
                 }
             }
         )
@@ -157,19 +163,21 @@ fun FeaturesScreenContent(docIndex: Int) {
                     if (seq.isNotEmpty()) { Spacer(Modifier.height(8.dp))
                         Text("Sequence (${seq.length} bp):", fontWeight = FontWeight.Bold)
                         Text(seq.take(300) + if (seq.length > 300) "..." else "") }
-                    // AI loading bar (animated or themed constant)
+                    // AI loading bar + streaming content
                     if (aiLoading) {
                         Spacer(Modifier.height(8.dp))
                         Text("AI Analysis:", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
                         LinearProgressIndicator()
-                    } else if (aiResult != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Text("AI Analysis:", fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        // Themed constant bar (completed)
-                        Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
-                        Spacer(Modifier.height(4.dp))
+                    }
+                    if (aiResult != null && aiResult!!.isNotBlank()) {
+                        if (!aiLoading) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("AI Analysis:", fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(4.dp))
+                            Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
+                            Spacer(Modifier.height(4.dp))
+                        }
                         MarkdownText(markdown = aiResult!!, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -181,7 +189,7 @@ fun FeaturesScreenContent(docIndex: Int) {
                         if (aiResult == null && !aiLoading) {
                             scope.launch {
                                 aiLoading = true; aiResult = ""
-                                val client = AiClient(aiUrl, aiKey, aiModel, aiLang)
+                                val client = AiClient(aiUrl, aiKey, aiModel, aiLang, thinkingEnabled = aiThinking)
                                 val prompt = "Feature: ${f.name} (${f.type.label}), position ${f.start + 1}-${f.end}, ${f.length}bp, strand=${f.strand.label}. What is this element and what does it do in a plasmid?"
                                 var buf = StringBuilder()
                                 client.askStream("You are a molecular biology expert specializing in plasmid design.", prompt, fast = true).collect { token ->
@@ -194,9 +202,15 @@ fun FeaturesScreenContent(docIndex: Int) {
                                 aiResult = (aiResult ?: "") + buf.toString()
                                 aiLoading = false
                             }
+                        } else if (aiResult != null && !aiLoading) {
+                            clip.setText(AnnotatedString(aiResult!!))
                         }
                     }) {
-                        if (aiLoading) { CircularProgressIndicator(Modifier.size(16.dp)) } else { Icon(Icons.Default.Psychology, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Ask AI") }
+                        when {
+                            aiLoading -> CircularProgressIndicator(Modifier.size(16.dp))
+                            aiResult != null -> { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
+                            else -> { Icon(Icons.Default.Psychology, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Ask AI") }
+                        }
                     }
                 }
             }

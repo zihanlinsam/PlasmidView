@@ -222,8 +222,6 @@ private fun FeatDlg(f: Feature, doc: com.plasmidview.data.model.PlasmidDocument,
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onDismiss) { Text("Close") }
-                Button(onClick = { val seq = f.displaySequence(doc)
-                    if (seq.isNotEmpty()) clip.setText(AnnotatedString(seq)) }) { Text("Copy") }
             }
         }
     )

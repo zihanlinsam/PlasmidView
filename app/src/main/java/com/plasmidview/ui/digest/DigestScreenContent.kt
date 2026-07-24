@@ -622,7 +622,7 @@ private fun AutoPickDialog(
                         searchTrigger++
                         candidates = null
                     },
-                    enabled = !isLoading
+                    enabled = !isLoading && candidates == null
                 ) { Text(if (isLoading) "Searching..." else "Search") }
             }
         }

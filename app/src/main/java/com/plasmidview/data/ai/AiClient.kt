@@ -16,7 +16,8 @@ class AiClient(
     private val baseUrl: String,
     private val apiKey: String,
     private val model: String,
-    private val language: String = "english"
+    private val language: String = "english",
+    private val thinkingEnabled: Boolean = false
 ) {
     private val valid: Boolean get() = apiKey.isNotBlank() && baseUrl.isNotBlank()
 
@@ -43,7 +44,9 @@ class AiClient(
                         put(JSONObject().apply { put("role", "system"); put("content", sysMsg) })
                         put(JSONObject().apply { put("role", "user"); put("content", userPrompt) })
                     })
-                    put("temperature", 0.3)
+                    if (!thinkingEnabled) {
+                        put("thinking", JSONObject().apply { put("type", "disabled") })
+                    }
                 }
 
                 conn.outputStream.write(body.toString().toByteArray())
@@ -102,7 +105,9 @@ class AiClient(
                         put(JSONObject().apply { put("role", "system"); put("content", sysMsg) })
                         put(JSONObject().apply { put("role", "user"); put("content", userPrompt) })
                     })
-                    put("temperature", if (fast) 0.3 else 0.3)
+                    if (!thinkingEnabled) {
+                        put("thinking", JSONObject().apply { put("type", "disabled") })
+                    }
                 }
 
                 conn.outputStream.write(body.toString().toByteArray())

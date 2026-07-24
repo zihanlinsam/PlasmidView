@@ -63,6 +63,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
     val aiKey by prefs.aiApiKey.collectAsState(initial = "")
     val aiModel by prefs.aiModel.collectAsState(initial = "")
     val aiLang by prefs.aiLang.collectAsState(initial = "english")
+    val aiThinking by prefs.aiThinking.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
@@ -166,7 +167,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                             if (aiResult == null) {
                                 scope.launch {
                                     aiLoading = true; aiResult = ""
-                                    val client = AiClient(aiUrl, aiKey, aiModel, aiLang)
+                                    val client = AiClient(aiUrl, aiKey, aiModel, aiLang, thinkingEnabled = aiThinking)
                                     val prompt = buildString {
                                         appendLine("I performed a local sequence alignment.")
                                         appendLine("Query: ${r.queryName} (${r.queryLen} bp) · Ref: ${r.refName} (${r.refLen} bp)")

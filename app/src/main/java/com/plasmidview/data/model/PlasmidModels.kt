@@ -113,6 +113,7 @@ class AppPreferences(private val ctx: Context) {
         private val AI_KEY = stringPreferencesKey("ai_key")
         private val AI_MODEL = stringPreferencesKey("ai_model")
         private val AI_LANG = stringPreferencesKey("ai_lang")
+        private val AI_THINKING = booleanPreferencesKey("ai_thinking")
         private val EXAMPLE_SHOWN = booleanPreferencesKey("example_shown")
     }
     val baseCol: Flow<Boolean> = ctx.ps.data.map { it[BC] ?: true }
@@ -122,6 +123,7 @@ class AppPreferences(private val ctx: Context) {
     val aiApiKey: Flow<String> = ctx.ps.data.map { it[AI_KEY] ?: "" }
     val aiModel: Flow<String> = ctx.ps.data.map { it[AI_MODEL] ?: "mimo-v2.5" }
     val aiLang: Flow<String> = ctx.ps.data.map { it[AI_LANG] ?: "english" }
+    val aiThinking: Flow<Boolean> = ctx.ps.data.map { it[AI_THINKING] ?: false }
     val exampleShown: Flow<Boolean> = ctx.ps.data.map { it[EXAMPLE_SHOWN] ?: false }
     suspend fun setBase(v: Boolean) { ctx.ps.edit { it[BC] = v } }
     suspend fun setThemeMode(m: ThemeMode) { ctx.ps.edit { it[DK] = m.ordinal } }
@@ -130,5 +132,6 @@ class AppPreferences(private val ctx: Context) {
     suspend fun setAiKey(v: String) { ctx.ps.edit { it[AI_KEY] = v } }
     suspend fun setAiModel(v: String) { ctx.ps.edit { it[AI_MODEL] = v } }
     suspend fun setAiLang(v: String) { ctx.ps.edit { it[AI_LANG] = v } }
+    suspend fun setAiThinking(v: Boolean) { ctx.ps.edit { it[AI_THINKING] = v } }
     suspend fun setExampleShown(v: Boolean) { ctx.ps.edit { it[EXAMPLE_SHOWN] = v } }
 }
