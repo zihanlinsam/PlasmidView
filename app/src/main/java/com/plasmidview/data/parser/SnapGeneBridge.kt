@@ -80,4 +80,34 @@ object SnapGeneBridge {
         "restriction_site" -> FeatureType.RESTRICTION_SITE
         else -> FeatureType.OTHER
     }
+
+    /** Write feature list + seq back to a .dna byte array. */
+    fun writeBytes(context: Context, bytes: ByteArray, features: List<Feature>, sequence: String, fileName: String): ByteArray? {
+        return try {
+            ensureInit(context)
+            val tempFile = java.io.File(context.cacheDir, fileName.ifBlank { "temp_edit.dna" })
+            tempFile.writeBytes(bytes)
+            val py = Python.getInstance()
+            val module = py.getModule("sgffp_android")
+            val featuresJson = org.json.JSONArray()
+            features.forEach { f ->
+                featuresJson.put(org.json.JSONObject().apply {
+                    put("name", f.name)
+                    put("type", f.type.label.lowercase().replace(" ", "_"))
+                    put("start", f.start)
+                    put("end", f.end)
+                    put("strand", when (f.strand) {
+                        Strand.FORWARD -> "+"
+                        Strand.REVERSE -> "-"
+                        Strand.NONE -> "."
+                    })
+                    put("color", f.color)
+                })
+            }
+            val result = module.callAttr("write_features", tempFile.absolutePath, featuresJson.toString(), sequence)
+            val outBytes = tempFile.readBytes()
+            tempFile.delete()
+            outBytes
+        } catch (e: Exception) { null }
+    }
 }

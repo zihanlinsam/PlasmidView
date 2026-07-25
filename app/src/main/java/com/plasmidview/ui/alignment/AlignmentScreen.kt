@@ -7,8 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -195,7 +197,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                     aiLoading = false
                                 }
                             }
-                        }) { Icon(Icons.Default.Psychology, "Ask AI") }
+                        }) { Icon(Icons.Default.AutoAwesome, "Ask AI") }
                     }
                 }
             )
@@ -304,7 +306,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                 (refChunks.size * (trackH + lineH * 3 + gapPx) + ((if (qPrefix.isNotEmpty()) 1 else 0) + (if (qSuffix.isNotEmpty()) 1 else 0)) * (trackH + lineH * 3 + gapPx) + lineH).toDp()
                             })) {
                                 val xSeq = headerPx + 4.dp.toPx()
-                                val headerPaint = android.graphics.Paint().apply { textSize = headerTextSize; color = Color.Gray.hashCode() }
+                                val headerPaint = android.graphics.Paint().apply { textSize = headerTextSize; color = Color.Gray.toArgb() }
 
                                 var y = 2.dp.toPx()
 
@@ -326,7 +328,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                         if (cf.name.isNotBlank()) {
                                             drawContext.canvas.nativeCanvas.drawText(cf.name, xSeq + cf.startChar * charPx + 2.dp.toPx(),
                                                 y + trackH - 2.dp.toPx(),
-                                                android.graphics.Paint().apply { color = Color.White.hashCode(); textSize = labelSize })
+                                                android.graphics.Paint().apply { color = Color.White.toArgb(); textSize = labelSize })
                                         }
                                     }
                                     drawContext.canvas.nativeCanvas.drawText("Track", 0f, y + trackH * 0.7f, headerPaint)
@@ -335,7 +337,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                     val refY = y + trackH + 2.dp.toPx()
                                     refC.forEachIndexed { ri, ch ->
                                         drawContext.canvas.nativeCanvas.drawText(ch.toString(), xSeq + ri * charPx, refY + lineH * 0.7f,
-                                            android.graphics.Paint().apply { color = (baseColors[ch.uppercaseChar()] ?: Color.Gray).hashCode(); textSize = monoSize })
+                                            android.graphics.Paint().apply { color = (baseColors[ch.uppercaseChar()] ?: Color.Gray).toArgb(); textSize = monoSize })
                                     }
                                     drawContext.canvas.nativeCanvas.drawText("Ref", 0f, refY + lineH * 0.7f, headerPaint)
 
@@ -343,7 +345,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                     val matchY = refY + lineH
                                     matchC.forEachIndexed { mi, ch ->
                                         drawContext.canvas.nativeCanvas.drawText(ch.toString(), xSeq + mi * charPx, matchY + lineH * 0.7f,
-                                            android.graphics.Paint().apply { color = (matchColors[ch] ?: Color.Gray.copy(alpha = 0.4f)).hashCode(); textSize = monoSize })
+                                            android.graphics.Paint().apply { color = (matchColors[ch] ?: Color.Gray.copy(alpha = 0.4f)).toArgb(); textSize = monoSize })
                                     }
                                     drawContext.canvas.nativeCanvas.drawText("Match", 0f, matchY + lineH * 0.7f, headerPaint)
 
@@ -352,7 +354,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                     queryC.forEachIndexed { qi, ch ->
                                         val isMis = qi < refC.length && refC[qi] !in " -" && ch !in " -" && refC[qi] != ch
                                         val qCol = if (isMis) Color.Red else (baseColors[ch.uppercaseChar()] ?: Color.Gray)
-                                        val p = android.graphics.Paint().apply { color = qCol.hashCode(); textSize = monoSize; if (isMis) isFakeBoldText = true }
+                                        val p = android.graphics.Paint().apply { color = qCol.toArgb(); textSize = monoSize; if (isMis) isFakeBoldText = true }
                                         drawContext.canvas.nativeCanvas.drawText(ch.toString(), xSeq + qi * charPx, queryY + lineH * 0.7f, p)
                                     }
                                     drawContext.canvas.nativeCanvas.drawText("Query", 0f, queryY + lineH * 0.7f, headerPaint)
@@ -369,7 +371,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                     val qy = y + trackH + 2.dp.toPx() + lineH * 2.7f
                                     qPrefix.forEachIndexed { pi, ch ->
                                         drawContext.canvas.nativeCanvas.drawText(ch.toString(), xSeq + pi * charPx, qy,
-                                            android.graphics.Paint().apply { color = (baseColors[ch.uppercaseChar()] ?: Color.Gray).copy(alpha = 0.5f).hashCode(); textSize = monoSize })
+                                            android.graphics.Paint().apply { color = (baseColors[ch.uppercaseChar()] ?: Color.Gray).copy(alpha = 0.5f).toArgb(); textSize = monoSize })
                                     }
                                     y += trackH + 2.dp.toPx() + 3*lineH + gapPx
                                 }
@@ -382,7 +384,7 @@ fun AlignmentScreen(onBack: () -> Unit) {
                                     val baseX = xSeq + refStr.count { it != '-' } * charPx
                                     qSuffix.forEachIndexed { si, ch ->
                                         drawContext.canvas.nativeCanvas.drawText(ch.toString(), baseX + si * charPx, qy,
-                                            android.graphics.Paint().apply { color = (baseColors[ch.uppercaseChar()] ?: Color.Gray).copy(alpha = 0.5f).hashCode(); textSize = monoSize })
+                                            android.graphics.Paint().apply { color = (baseColors[ch.uppercaseChar()] ?: Color.Gray).copy(alpha = 0.5f).toArgb(); textSize = monoSize })
                                     }
                                 }
                             }

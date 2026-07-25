@@ -65,3 +65,35 @@ def parse(filepath: str) -> str:
         return json.dumps({"name": name, "sequence": seq, "topology": topology, "features": features})
     except Exception as e:
         return json.dumps({"error": str(e), "detail": traceback.format_exc()})
+
+
+def write_features(filepath: str, features_json: str, sequence: str) -> None:
+    """Write modified features back to a .dna file."""
+    try:
+        reader = SgffReader(filepath)
+        doc = reader.read()
+        features_list = json.loads(features_json)
+        from sgffp.models.feature import SgffFeature
+        # Clear existing features and replace
+        existing_features = list(getattr(doc, "features", []) or [])
+        for f in list(existing_features):
+            doc.remove(f)
+        for f_data in features_list:
+            f = SgffFeature(f_data.get("name", ""), f_data.get("type", "misc_feature"))
+            f.start = f_data.get("start", 0)
+            f.end = f_data.get("end", 0)
+            strand = f_data.get("strand", ".")
+            if strand == "+":
+                f.strand = 1
+            elif strand == "-":
+                f.strand = -1
+            else:
+                f.strand = 0
+            f.color = f_data.get("color", "#757575")
+            doc.add_feature(f)
+        # Write back
+        from sgffp.writer import SgffWriter
+        writer = SgffWriter(filepath)
+        writer.write(doc)
+    except Exception as e:
+        raise Exception(f"write_features: {e}")

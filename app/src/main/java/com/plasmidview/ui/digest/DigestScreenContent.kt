@@ -15,22 +15,26 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.min
+import kotlin.math.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.plasmidview.data.digest.*
 import com.plasmidview.data.digest.RestrictionSearch
 import com.plasmidview.data.model.*
+import com.plasmidview.ui.common.FeatureDetailDialog
 
 // ── color palette for enzymes (rotated through) ──
 private val ENZ_COLORS = listOf(
@@ -55,6 +60,12 @@ fun DigestScreenContent(docIndex: Int) {
 
     // State
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { AppPreferences(ctx) }
+    val aiUrl by prefs.aiBaseUrl.collectAsState(initial = "")
+    val aiKey by prefs.aiApiKey.collectAsState(initial = "")
+    val aiModel by prefs.aiModel.collectAsState(initial = "")
+    val aiLang by prefs.aiLang.collectAsState(initial = "english")
+    val aiThinking by prefs.aiThinking.collectAsState(initial = false)
     var enzymeNameList by remember { mutableStateOf<List<RestrictionSearch.EnzymeEntry>>(emptyList()) }
     var enzymeDataJson by remember { mutableStateOf<String?>(null) }
     var selectedEnzymes by remember { mutableStateOf(setOf<String>()) }
@@ -148,17 +159,8 @@ fun DigestScreenContent(docIndex: Int) {
 
     // ── Feature detail dialog ──
     if (showFeatDlg && selFeat != null) {
-        val f = selFeat!!
-        AlertDialog(onDismissRequest = { showFeatDlg = false; selFeat = null },
-            title = { Text(f.name.ifBlank { f.type.label }, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Type: ${f.type.label}"); Text("Position: ${f.start + 1} - ${f.end}")
-                    Text("Length: ${f.length} bp"); Text("Strand: ${f.strand.label}")
-                }
-            },
-            confirmButton = { TextButton(onClick = { showFeatDlg = false; selFeat = null }) { Text("Close") } }
-        )
+        FeatureDetailDialog(selFeat!!, doc, onDismiss = { showFeatDlg = false; selFeat = null },
+            aiUrl = aiUrl, aiKey = aiKey, aiModel = aiModel, aiLang = aiLang, aiThinking = aiThinking)
     }
 
     // ── Select Enzyme dialog ──
@@ -223,7 +225,9 @@ fun DigestScreenContent(docIndex: Int) {
 // ── Circular plasmid map with features + cut markers ──
 
 private const val ARC_W_DP = 12f
-private const val CUT_W_DP = 3f  // 3x arc width
+private const val CUT_W_DP = 3f
+private val ARROW_LEN = 7.dp
+private val LANE_GAP = 4.dp
 
 @Composable
 private fun DigestMap(
@@ -232,149 +236,170 @@ private fun DigestMap(
     enzColors: Map<String, Color>,
     onFeatureTap: (Feature) -> Unit
 ) {
-    val isDark = (MaterialTheme.colorScheme.background.red * 0.299 +
-            MaterialTheme.colorScheme.background.green * 0.587 +
-            MaterialTheme.colorScheme.background.blue * 0.114) < 0.5f
     val dens = LocalDensity.current
     val tickCount = 8
-    val tickN = 8
     val scaleS = remember { mutableFloatStateOf(1f) }
     val oxS = remember { mutableFloatStateOf(0f) }
     val oyS = remember { mutableFloatStateOf(0f) }
+    val tickTextArgb = MaterialTheme.colorScheme.onBackground.toArgb()
 
-    Canvas(Modifier.fillMaxSize()
-        .pointerInput(Unit) {
-            detectTransformGestures { c, pan, zoom, _ ->
-                scaleS.floatValue = (scaleS.floatValue * zoom).coerceIn(0.5f, 5f)
+    val laneMap = remember(doc) { assignLanes(doc.features, doc.totalLength) }
+    val maxLane = laneMap.values.maxOrNull() ?: 0
+
+    val aw = with(dens) { ARC_W_DP.dp.toPx() }
+    val step = aw + with(dens) { LANE_GAP.toPx() }
+    val tickOuter = maxLane / 2
+    val tickOffset = tickOuter * step
+
+    Box(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize()
+            .pointerInput(Unit) {
+            detectTransformGestures { _, pan, zoom, _ ->
+                scaleS.floatValue = (scaleS.floatValue * zoom).coerceIn(0.3f, 5f)
                 oxS.floatValue += pan.x
                 oyS.floatValue += pan.y
             }
         }
-        .pointerInput(doc.features) {
+        .pointerInput(doc, laneMap) {
             detectTapGestures { tap ->
-                val scale = scaleS.floatValue
-                val ox = oxS.floatValue
-                val oy = oyS.floatValue
-                val w = size.width.toFloat(); val h = size.height.toFloat()
-                val cx = w / 2; val cy = h / 2
-                // Invert transform to get logical coordinates
-                val invX = (tap.x - ox - cx) / scale + cx
-                val invY = (tap.y - oy - cy) / scale + cy
-                val radius = min(w, h) / 2 * 0.42f
-                val innerR = radius - ARC_W_DP.dp.toPx() / 2
-                val outerR = radius + ARC_W_DP.dp.toPx() / 2
-                val dx = invX - cx; val dy = invY - cy
-                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-                if (dist < innerR || dist > outerR) return@detectTapGestures
-                // Match drawArc angle convention: 0° = 3-o'clock, +90° offset in draw
-                // atan2 gives 0° at 3-o'clock; add 90° to align with drawArc's -90
-                var angle = kotlin.math.atan2(dy, dx) + kotlin.math.PI / 2
-                if (angle < 0) angle += 2 * kotlin.math.PI
-                val pos = ((angle / (2 * kotlin.math.PI)) * doc.totalLength).toInt().coerceIn(0, doc.totalLength - 1)
-                doc.features.firstOrNull { f -> f.start <= pos && pos <= f.end }?.let(onFeatureTap)
+                val s = scaleS.floatValue
+                val ox = oxS.floatValue; val oy = oyS.floatValue
+                val cs = size; val cx = cs.width / 2f; val cy = cs.height / 2f
+                val awPx0 = ARC_W_DP.dp.toPx()
+                val step0 = awPx0 + LANE_GAP.toPx()
+                val tickLen0 = 8.dp.toPx(); val labelGap0 = 2.dp.toPx(); val pad0 = 8.dp.toPx()
+                val innerMin = ((maxLane + 1) / 2) * step0 + awPx0 / 2f + 24.dp.toPx()
+                val lPaint = android.graphics.Paint().apply { textSize = 9.sp.toPx() }
+                val labelHalfW = (0 until tickCount).maxOf {
+                    lPaint.measureText("${it * doc.totalLength / tickCount}bp")
+                } / 2f
+                val crBase = fitBaseRadius(
+                    cs.width.toFloat(), cs.height.toFloat(), maxLane, step0, awPx0 / 2f,
+                    tickLen0, labelGap0, labelHalfW, pad0, innerMin
+                ) * s
+                val awPx = awPx0 * s
+                val stepPx = step0 * s
+                val dx = tap.x - cx - ox; val dy = tap.y - cy - oy
+                val d = sqrt(dx * dx + dy * dy)
+
+                val hitLane = laneMap.values.distinct().firstOrNull { k ->
+                    val lr = laneRadius(k, crBase, stepPx)
+                    abs(d - lr) <= awPx / 2f + 6.dp.toPx()
+                } ?: return@detectTapGestures
+
+                var a = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                a = ((a + 90) % 360 + 360) % 360
+                val pos = (a / 360f * doc.totalLength).toInt().coerceIn(0, doc.totalLength)
+
+                doc.features.firstOrNull { f ->
+                    (laneMap[f] ?: 0) == hitLane &&
+                    if (f.start < f.end) pos in f.start..f.end
+                    else pos >= f.start || pos <= f.end
+                }?.let(onFeatureTap)
             }
         }
     ) {
-        // Apply zoom/pan transform to all drawing
-        drawContext.transform.run {
-            translate(oxS.floatValue, oyS.floatValue)
-            scale(scaleS.floatValue, scaleS.floatValue, androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2))
-        }
         val w = size.width; val h = size.height
-        val cx = w / 2; val cy = h / 2
-        val radius = min(w, h) / 2 * 0.42f
-        val arcW = with(dens) { ARC_W_DP.dp.toPx() }
-        val cutW = with(dens) { CUT_W_DP.dp.toPx() }
-        val innerR = radius - arcW / 2
-        val outerR = radius + arcW / 2
+        val cx = w / 2f; val cy = h / 2f
+        val hw = aw / 2f
+        val cutW = CUT_W_DP.dp.toPx()
+        val tickLen = 8.dp.toPx(); val labelGap = 2.dp.toPx(); val pad = 8.dp.toPx()
+        val innerMin = ((maxLane + 1) / 2) * step + hw + 24.dp.toPx()
+        val lPaint = android.graphics.Paint().apply { textSize = 9.sp.toPx() }
+        val labelHalfW = (0 until tickCount).maxOf {
+            lPaint.measureText("${it * doc.totalLength / tickCount}bp")
+        } / 2f
+        val crBase = fitBaseRadius(
+            w, h, maxLane, step, hw,
+            tickLen, labelGap, labelHalfW, pad, innerMin
+        )
+        val tickR0 = crBase + tickOuter * step + hw
+        val aLen = ARROW_LEN.toPx()
         val total = doc.totalLength.toFloat()
 
-        // ── Outer ring (backbone) ──
-        drawArc(Color.Gray.copy(alpha = 0.3f), 0f, 360f, false,
-            Offset(cx - radius, cy - radius), Size(radius * 2, radius * 2),
-            style = Stroke(arcW))
+        withTransform({
+            translate(oxS.floatValue, oyS.floatValue)
+            scale(scaleS.floatValue, scaleS.floatValue, Offset(cx, cy))
+        }) {
+            // ── Main backbone (thin circle, matching Map screen) ──
+            drawCircle(color = Color.Gray.copy(alpha = 0.25f), radius = crBase,
+                center = Offset(cx, cy), style = Stroke(width = 2.dp.toPx()))
 
-        // ── Feature arcs ──
-        val isDarkCanvas = isDark
-        doc.features.forEach { f ->
-            val s = f.start.toFloat(); val e = f.end.toFloat()
-            // No border/none strand → no border
-            val applyBorder = f.strand != Strand.NONE
-            val dashed = f.strand == Strand.REVERSE
-            val col = try { Color(android.graphics.Color.parseColor(f.color)) } catch (_: Exception) { Color.Gray }
-
-            // Feature arc (1dp inset from ring edges)
-            val fArcW = arcW - 2.dp.toPx()
-            val fInnerR = radius - fArcW / 2
-            val sAngle = (s / total) * 360f - 90f
-            val sweep = ((e - s) / total) * 360f
-            drawArc(col.copy(alpha = 0.65f), sAngle, sweep, false,
-                Offset(cx - radius, cy - radius), Size(radius * 2, radius * 2),
-                style = Stroke(fArcW))
-
-            // Border
-            if (applyBorder && sweep > 0.5f) {
-                val bCol = if (isDarkCanvas) Color.White else Color.Black
-                val bArcW = 2.dp.toPx()
-                val eff = if (dashed) PathEffect.dashPathEffect(floatArrayOf(4f, 3f)) else null
-                drawArc(bCol, sAngle - 0.3f, sweep + 0.6f, false,
-                    Offset(cx - radius, cy - radius), Size(radius * 2, radius * 2),
-                    style = Stroke(bArcW, pathEffect = eff))
+            // ── Feature arcs (lane-aware) ──
+            doc.features.forEach { f ->
+                val fcr = laneRadius(laneMap[f] ?: 0, crBase, step)
+                if (f.start >= f.end) {
+                    drawFeatureArc(f, 0, f.end, total, cx, cy, fcr, aw, hw, aLen)
+                    drawFeatureArc(f, f.start, doc.totalLength, total, cx, cy, fcr, aw, hw, aLen)
+                    return@forEach
+                }
+                drawFeatureArc(f, f.start, f.end, total, cx, cy, fcr, aw, hw, aLen)
             }
-        }
 
-        // ── Cut site markers ──
-        if (digestResult != null) {
-            for ((enzName, cuts) in digestResult.cutsByEnzyme) {
-                val color = enzColors[enzName] ?: Color.Gray
-                for (pos in cuts) {
-                    val angle = (pos.toFloat() / total) * 360f - 90f
-                    val rad = angle * Math.PI / 180.0
-                    // Line from innerR to outerR at angle
-                    val x1 = cx + (innerR * kotlin.math.cos(rad)).toFloat()
-                    val y1 = cy + (innerR * kotlin.math.sin(rad)).toFloat()
-                    val x2 = cx + (outerR * kotlin.math.cos(rad)).toFloat()
-                    val y2 = cy + (outerR * kotlin.math.sin(rad)).toFloat()
-                    // Draw as a thick line
-                    drawLine(color, Offset(x1, y1), Offset(x2, y2), strokeWidth = cutW,
-                        cap = StrokeCap.Round)
-                    // Label
-                    val labelR = outerR + 12.dp.toPx()
-                    val lx = cx + (labelR * kotlin.math.cos(rad)).toFloat()
-                    val ly = cy + (labelR * kotlin.math.sin(rad)).toFloat()
-                    drawContext.canvas.nativeCanvas.drawText("$enzName @${pos+1}",
-                        lx, ly,
-                        android.graphics.Paint().apply {
-                            setColor(color.hashCode())
-                            textSize = 9.sp.toPx()
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        })
+            // ── Cut site markers (on backbone lane 0) ──
+            val innerR = crBase - hw
+            val outerR = crBase + hw
+            if (digestResult != null) {
+                for ((enzName, cuts) in digestResult.cutsByEnzyme) {
+                    val color = enzColors[enzName] ?: Color.Gray
+                    for (pos in cuts) {
+                        val angle = (pos.toFloat() / total) * 360f - 90f
+                        val rad = angle * PI / 180.0
+                        val x1 = cx + (innerR * cos(rad)).toFloat()
+                        val y1 = cy + (innerR * sin(rad)).toFloat()
+                        val x2 = cx + (outerR * cos(rad)).toFloat()
+                        val y2 = cy + (outerR * sin(rad)).toFloat()
+                        drawLine(color, Offset(x1, y1), Offset(x2, y2),
+                            strokeWidth = cutW, cap = StrokeCap.Round)
+                        val labelR = outerR + 12.dp.toPx()
+                        val lx = cx + (labelR * cos(rad)).toFloat()
+                        val ly = cy + (labelR * sin(rad)).toFloat()
+                        drawContext.canvas.nativeCanvas.drawText("$enzName @${pos+1}",
+                            lx, ly,
+                            android.graphics.Paint().apply {
+                                setColor(color.toArgb())
+                                textSize = 9.sp.toPx()
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            })
+                    }
                 }
             }
+
+            // ── Tick marks (pre-shifted past outer lanes) ──
+            for (i in 0 until tickCount) {
+                val a = (i.toFloat() / tickCount) * 360f - 90f
+                val rad = Math.toRadians(a.toDouble())
+                val r1 = tickR0 + 2.dp.toPx()
+                val r2 = r1 + tickLen
+                drawLine(Color.Gray.copy(alpha = 0.5f),
+                    Offset(cx + (r1 * cos(rad)).toFloat(), cy + (r1 * sin(rad)).toFloat()),
+                    Offset(cx + (r2 * cos(rad)).toFloat(), cy + (r2 * sin(rad)).toFloat()),
+                    strokeWidth = 1.5.dp.toPx())
+            }
         }
 
-        // ── Tick marks ──
+        // ── Tick labels (outside transform, constant size) ──
         for (i in 0 until tickCount) {
+            val sc = scaleS.floatValue
             val a = (i.toFloat() / tickCount) * 360f - 90f
             val rad = Math.toRadians(a.toDouble())
-            val tickR1 = radius + arcW / 2 + 3.dp.toPx()
-            val tickR2 = tickR1 + 6.dp.toPx()
-            val x1 = cx + (tickR1 * kotlin.math.cos(rad)).toFloat()
-            val y1 = cy + (tickR1 * kotlin.math.sin(rad)).toFloat()
-            val x2 = cx + (tickR2 * kotlin.math.cos(rad)).toFloat()
-            val y2 = cy + (tickR2 * kotlin.math.sin(rad)).toFloat()
-            drawLine(Color.Gray.copy(alpha = 0.5f), Offset(x1, y1), Offset(x2, y2), strokeWidth = 1.5.dp.toPx())
-            // Label
-            val labelR = tickR2 + 8.dp.toPx()
-            val lx = cx + (labelR * kotlin.math.cos(rad)).toFloat()
-            val ly = cy + (labelR * kotlin.math.sin(rad)).toFloat()
+            val rTick = (tickR0 + 2.dp.toPx() + tickLen + labelGap + labelHalfW) * sc
+            val lx = cx + oxS.floatValue + (rTick * cos(rad)).toFloat()
+            val ly = cy + oyS.floatValue + (rTick * sin(rad)).toFloat()
             val bp = (i * doc.totalLength / tickCount)
             drawContext.canvas.nativeCanvas.drawText("${bp}bp", lx, ly,
                 android.graphics.Paint().apply {
-                    color = Color.Gray.copy(alpha = 0.6f).hashCode()
-                    textSize = 8.sp.toPx()
+                    color = tickTextArgb
+                    textSize = 9.sp.toPx()
                     textAlign = android.graphics.Paint.Align.CENTER
                 })
+        }
+    }
+        IconButton(
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+            onClick = { scaleS.floatValue = 1f; oxS.floatValue = 0f; oyS.floatValue = 0f }
+        ) {
+            Icon(Icons.Default.Home, contentDescription = "Reset view")
         }
     }
 }
@@ -415,6 +440,99 @@ private fun DigestResultPanel(
             }
         }
     }
+}
+
+// ── Single-path feature arc (shared) ──
+
+private fun DrawScope.drawFeatureArc(
+    f: Feature, segStart: Int, segEnd: Int, len: Float,
+    cx: Float, cy: Float, cr: Float, aw: Float, hw: Float, aLen: Float
+) {
+    val col = try { Color(android.graphics.Color.parseColor(f.color)) } catch (_: Exception) { Color.Gray }
+    val sa = (segStart / len) * 360f - 90f
+    val sw = (segEnd - segStart) / len * 360f
+    if (sw <= 0f) return
+
+    if (f.strand == Strand.NONE) {
+        drawArc(col, sa, sw, false, Offset(cx - cr, cy - cr), Size(cr * 2, cr * 2),
+            style = Stroke(width = aw))
+        return
+    }
+
+    val rev = f.strand == Strand.REVERSE
+    val a0 = sa
+    val a1 = sa + sw
+    val arrowDeg = ((aLen / cr) * (180.0 / PI)).toFloat().coerceAtMost(sw * 0.5f)
+    val baseDeg = if (rev) a0 + arrowDeg else a1 - arrowDeg
+    val bandSw = sw - arrowDeg
+    val ro = cr + hw
+    val ri = (cr - hw).coerceAtLeast(1f)
+
+    fun pt(r: Float, deg: Float): Offset {
+        val rad = Math.toRadians(deg.toDouble())
+        return Offset(
+            (cx + r * cos(rad)).toFloat(),
+            (cy + r * sin(rad)).toFloat()
+        )
+    }
+
+    val outerRect = Rect(cx - ro, cy - ro, cx + ro, cy + ro)
+    val innerRect = Rect(cx - ri, cy - ri, cx + ri, cy + ri)
+
+    val path = Path().apply {
+        if (!rev) {
+            arcTo(outerRect, a0, bandSw, forceMoveTo = true)
+            lineTo(pt(cr, a1).x, pt(cr, a1).y)
+            lineTo(pt(ri, baseDeg).x, pt(ri, baseDeg).y)
+            arcTo(innerRect, baseDeg, -bandSw, forceMoveTo = false)
+            close()
+        } else {
+            moveTo(pt(ro, baseDeg).x, pt(ro, baseDeg).y)
+            arcTo(outerRect, baseDeg, bandSw, forceMoveTo = false)
+            lineTo(pt(ri, a1).x, pt(ri, a1).y)
+            arcTo(innerRect, a1, -bandSw, forceMoveTo = false)
+            lineTo(pt(cr, a0).x, pt(cr, a0).y)
+            close()
+        }
+    }
+    drawPath(path, col)
+}
+
+private data class Iv(val f: Feature, val s: Int, val e: Int)
+
+private fun assignLanes(features: List<Feature>, total: Int): Map<Feature, Int> {
+    val ivs = features.flatMap { f ->
+        if (f.start < f.end) listOf(Iv(f, f.start, f.end))
+        else listOf(Iv(f, f.start, total), Iv(f, 0, f.end))
+    }.sortedBy { it.s }
+    val laneEnd = mutableListOf<Int>()
+    val result = mutableMapOf<Feature, Int>()
+    for (iv in ivs) {
+        if (iv.f in result) continue
+        val lane = laneEnd.indexOfFirst { it <= iv.s }
+        if (lane == -1) {
+            result[iv.f] = laneEnd.size
+            laneEnd.add(iv.e)
+        } else {
+            result[iv.f] = lane
+            laneEnd[lane] = maxOf(laneEnd[lane], iv.e)
+        }
+    }
+    return result
+}
+
+private fun laneRadius(lane: Int, crBase: Float, step: Float): Float = when {
+    lane == 0 -> crBase
+    lane % 2 == 1 -> crBase - ((lane + 1) / 2) * step
+    else -> crBase + (lane / 2) * step
+}
+
+private fun fitBaseRadius(
+    w: Float, h: Float, maxLane: Int, step: Float, hw: Float,
+    tickLen: Float, labelGap: Float, labelHalfW: Float, pad: Float, innerMin: Float
+): Float {
+    val reserved = (maxLane / 2) * step + hw + tickLen + labelGap + labelHalfW + pad
+    return (min(w, h) / 2f - reserved).coerceAtLeast(innerMin)
 }
 
 // ── Select Enzyme Dialog ──

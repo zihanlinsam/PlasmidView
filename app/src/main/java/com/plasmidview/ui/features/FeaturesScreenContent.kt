@@ -1,7 +1,9 @@
 package com.plasmidview.ui.features
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -21,11 +23,16 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.plasmidview.data.ai.AiClient
+import com.plasmidview.data.editor.PlasmidExporter
 import com.plasmidview.data.model.*
+import com.plasmidview.data.parser.SnapGeneBridge
+import com.plasmidview.ui.common.FeatureDetailDialog
+import com.plasmidview.ui.editor.FeatureEditorSheet
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FeaturesScreenContent(docIndex: Int) {
     val doc = DocumentRepository.documents.getOrNull(docIndex) ?: return
@@ -46,6 +53,10 @@ fun FeaturesScreenContent(docIndex: Int) {
     var aiLoading by remember { mutableStateOf(false) }
     var plasmidAiResult by remember { mutableStateOf<String?>(null) }
     var plasmidAiLoading by remember { mutableStateOf(false) }
+
+    // Editor state
+    var editFeat by remember { mutableStateOf<Feature?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
 
     val filtered = remember(searchQ, doc.features) {
         if (searchQ.isBlank()) doc.features
@@ -78,7 +89,7 @@ fun FeaturesScreenContent(docIndex: Int) {
                             plasmidAiResult = (plasmidAiResult ?: "") + buf.toString()
                             plasmidAiLoading = false
                         }
-                    }) { Icon(Icons.Default.Psychology, "AI analyze plasmid") }
+                    }) { Icon(Icons.Default.AutoAwesome, "AI analyze plasmid", modifier = Modifier.size(16.dp)) }
                 }
             }
         }
@@ -97,7 +108,10 @@ fun FeaturesScreenContent(docIndex: Int) {
         } else {
             LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(filtered, key = { _, f -> "${f.start}-${f.name}" }) { _, feat ->
-                    Surface(modifier = Modifier.fillMaxWidth().clickable { selFeat = feat; showDetail = true; aiResult = null },
+                    Surface(modifier = Modifier.fillMaxWidth().combinedClickable(
+                        onClick = { selFeat = feat; showDetail = true; aiResult = null },
+                        onLongClick = { editFeat = feat; showEditor = true }
+                    ),
                         color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.small) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(4.dp, 32.dp).background(
@@ -148,72 +162,32 @@ fun FeaturesScreenContent(docIndex: Int) {
 
     // Feature detail dialog with Ask AI
     if (showDetail && selFeat != null) {
-        val f = selFeat!!
-        AlertDialog(
-            onDismissRequest = { showDetail = false; selFeat = null; aiResult = null },
-            title = { Text(f.name.ifBlank { f.type.label }, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Box(Modifier.fillMaxWidth().height(4.dp).background(
-                        try { Color(android.graphics.Color.parseColor(f.color)) } catch (_: Exception) { Color.Gray }))
-                    Spacer(Modifier.height(8.dp))
-                    Text("Type: ${f.type.label}"); Text("Position: ${f.start + 1} - ${f.end}")
-                    Text("Length: ${f.length} bp"); Text("Strand: ${f.strand.label}")
-                    val seq = f.displaySequence(doc)
-                    if (seq.isNotEmpty()) { Spacer(Modifier.height(8.dp))
-                        Text("Sequence (${seq.length} bp):", fontWeight = FontWeight.Bold)
-                        Text(seq.take(300) + if (seq.length > 300) "..." else "") }
-                    // AI loading bar + streaming content
-                    if (aiLoading) {
-                        Spacer(Modifier.height(8.dp))
-                        Text("AI Analysis:", fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        LinearProgressIndicator()
-                    }
-                    if (aiResult != null && aiResult!!.isNotBlank()) {
-                        if (!aiLoading) {
-                            Spacer(Modifier.height(8.dp))
-                            Text("AI Analysis:", fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(4.dp))
-                            Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
-                            Spacer(Modifier.height(4.dp))
-                        }
-                        MarkdownText(markdown = aiResult!!, style = MaterialTheme.typography.bodySmall)
-                    }
+        FeatureDetailDialog(selFeat!!, doc, onDismiss = { showDetail = false; selFeat = null; aiResult = null },
+            aiUrl = aiUrl, aiKey = aiKey, aiModel = aiModel, aiLang = aiLang, aiThinking = aiThinking)
+    }
+
+    // Feature editor sheet (long-press)
+    if (showEditor && editFeat != null) {
+        val originalDoc = doc
+        FeatureEditorSheet(
+            feature = editFeat!!,
+            onSave = { updated ->
+                val idx = DocumentRepository.documents.indexOf(originalDoc)
+                if (idx >= 0) {
+                    val newFeatures = originalDoc.features.map { f -> if (f === editFeat!!) updated else f }
+                    DocumentRepository.documents[idx] = originalDoc.copy(features = newFeatures)
                 }
+                showEditor = false; editFeat = null
             },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { showDetail = false; selFeat = null; aiResult = null }) { Text("Close") }
-                    Button(onClick = {
-                        if (aiResult == null && !aiLoading) {
-                            scope.launch {
-                                aiLoading = true; aiResult = ""
-                                val client = AiClient(aiUrl, aiKey, aiModel, aiLang, thinkingEnabled = aiThinking)
-                                val prompt = "Feature: ${f.name} (${f.type.label}), position ${f.start + 1}-${f.end}, ${f.length}bp, strand=${f.strand.label}. What is this element and what does it do in a plasmid?"
-                                var buf = StringBuilder()
-                                client.askStream("You are a molecular biology expert specializing in plasmid design.", prompt, fast = true).collect { token ->
-                                    buf.append(token)
-                                    if (buf.length >= 50) {
-                                        aiResult = (aiResult ?: "") + buf.toString()
-                                        buf = StringBuilder()
-                                    }
-                                }
-                                aiResult = (aiResult ?: "") + buf.toString()
-                                aiLoading = false
-                            }
-                        } else if (aiResult != null && !aiLoading) {
-                            clip.setText(AnnotatedString(aiResult!!))
-                        }
-                    }) {
-                        when {
-                            aiLoading -> CircularProgressIndicator(Modifier.size(16.dp))
-                            aiResult != null -> { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
-                            else -> { Icon(Icons.Default.Psychology, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Ask AI") }
-                        }
-                    }
+            onDelete = {
+                val idx = DocumentRepository.documents.indexOf(originalDoc)
+                if (idx >= 0) {
+                    val newFeatures = originalDoc.features.filter { it !== editFeat!! }
+                    DocumentRepository.documents[idx] = originalDoc.copy(features = newFeatures)
                 }
-            }
+                showEditor = false; editFeat = null
+            },
+            onDismiss = { showEditor = false; editFeat = null }
         )
     }
 }

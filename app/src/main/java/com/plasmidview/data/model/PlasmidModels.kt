@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -98,6 +99,57 @@ class FileRepository(private val ctx: Context) {
     }
     suspend fun clear() { ctx.fs.edit { it.remove(FILES_KEY) } }
 }
+
+// === Folder persistence ===
+data class FolderEntry(val uri: String, val name: String)
+private val FOLDER_URI_KEY = stringPreferencesKey("imported_folders")
+
+class FolderRepository(private val ctx: Context) {
+    val folders: Flow<List<FolderEntry>> = ctx.fs.data.map { it[FOLDER_URI_KEY]?.toFolderEntries() ?: emptyList() }
+    suspend fun add(entry: FolderEntry) {
+        ctx.fs.edit { p ->
+            val existing = p[FOLDER_URI_KEY]?.toFolderEntries() ?: emptyList()
+            if (existing.none { it.uri == entry.uri }) {
+                p[FOLDER_URI_KEY] = (existing + entry).toFolderJson()
+            }
+        }
+    }
+    suspend fun remove(uris: Set<String>) {
+        ctx.fs.edit { p ->
+            val raw = p[FOLDER_URI_KEY] ?: return@edit
+            val all = raw.toFolderEntries().filter { it.uri !in uris }
+            if (all.isEmpty()) p.remove(FOLDER_URI_KEY)
+            else p[FOLDER_URI_KEY] = all.toFolderJson()
+        }
+    }
+    /** Remove folders that are no longer accessible. */
+    suspend fun pruneInaccessible() {
+        val raw = ctx.fs.data.first()[FOLDER_URI_KEY] ?: return
+        val current = raw.toFolderEntries()
+        val valid = current.filter { entry ->
+            try {
+                val uri = android.net.Uri.parse(entry.uri)
+                val doc = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, uri)
+                doc != null && doc.exists()
+            } catch (_: Exception) { false }
+        }
+        ctx.fs.edit { p ->
+            if (valid.isEmpty()) p.remove(FOLDER_URI_KEY)
+            else p[FOLDER_URI_KEY] = valid.toFolderJson()
+        }
+    }
+}
+private fun List<FolderEntry>.toFolderJson(): String {
+    val a = JSONArray()
+    forEach { e -> a.put(JSONObject().apply { put("uri", e.uri); put("name", e.name) }) }
+    return a.toString()
+}
+private fun String.toFolderEntries(): List<FolderEntry> = try {
+    val a = JSONArray(this); (0 until a.length()).map { i ->
+        val o = a.getJSONObject(i)
+        FolderEntry(o.optString("uri",""), o.optString("name",""))
+    }
+} catch (_: Exception) { emptyList() }
 
 // === Theme mode ===
 enum class ThemeMode { AUTO, LIGHT, DARK }
